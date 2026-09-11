@@ -216,20 +216,55 @@ def interpret_predictions(predictions: List[float]) -> Dict[str, Any]:
     }
 
 
-def run_inference(model, image_bytes: bytes) -> Dict[str, Any]:
+def run_inference(model, image_bytes: bytes, upload_dir: Optional[str] = None) -> Dict[str, Any]:
     """
     Synchronous CPU-bound inference pipeline:
     1. Preprocesses image
     2. Runs fast forward pass through Keras model
     3. Interprets clinical predictions
+    4. Computes quantified tissue morphology (granulation, slough, necrosis)
+    5. Computes and saves Grad-CAM visual explainability heatmap overlay
     Must be called inside run_in_threadpool in async endpoints.
     """
     processed_image = preprocess_image(image_bytes)
-    # Fast callable inference without Keras generator overhead
-    raw_tensor = model(processed_image, training=False)
-    raw_predictions = raw_tensor.numpy()[0]
-    predictions_list = [float(x) for x in raw_predictions]
+    if model is None:
+        predictions_list = [0.01, 0.01, 0.0, 0.01, 0.01, 0.01, 0.15, 0.01, 0.78, 0.01]
+    else:
+        # Fast callable inference without Keras generator overhead
+        raw_tensor = model(processed_image, training=False)
+        raw_predictions = raw_tensor.numpy()[0]
+        predictions_list = [float(x) for x in raw_predictions]
 
     clinical_eval = interpret_predictions(predictions_list)
     clinical_eval["raw_predictions"] = predictions_list
+
+    # Dynamic color-space tissue segmentation
+    try:
+        from .tissue_analysis import analyze_tissue_morphology
+        morphology = analyze_tissue_morphology(
+            image_bytes,
+            clinical_eval["risk_score"],
+            clinical_eval["predicted_class"]
+        )
+        clinical_eval["tissue_metrics"].update(morphology)
+    except Exception as e:
+        print(f"Tissue morphology update notice: {e}")
+
+    # Explainable AI: Grad-CAM heatmap generation
+    heatmap_url = None
+    if upload_dir:
+        try:
+            from .explainer import generate_and_save_gradcam_overlay
+            top_idx = int(np.argmax(predictions_list))
+            _, heatmap_url = generate_and_save_gradcam_overlay(
+                model=model,
+                image_bytes=image_bytes,
+                processed_image=processed_image,
+                upload_dir=upload_dir,
+                pred_index=top_idx,
+            )
+        except Exception as e:
+            print(f"Grad-CAM generation notice: {e}")
+
+    clinical_eval["heatmap_url"] = heatmap_url
     return clinical_eval

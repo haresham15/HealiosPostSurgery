@@ -19,6 +19,7 @@ import {
   Heart,
 } from 'lucide-react';
 import { DoctorEscalationModal } from '@/components/clinical/DoctorEscalationModal';
+import { RecoveryConciergeChat } from '@/components/clinical/RecoveryConciergeChat';
 import { RecoveryStore } from '@/lib/recovery-store';
 
 const navItems = [
@@ -164,6 +165,8 @@ export default function PatientLayout({
         passport={passport}
         recoveryData={recoveryData}
       />
+
+      <RecoveryConciergeChat />
 
       {/* Minimal Footer */}
       <footer className="border-t border-border/60 bg-card/40 py-4 text-center text-xs text-muted-foreground">

@@ -4,6 +4,7 @@ export interface WoundAssessment {
   id: string;
   created_at: string;
   image_url: string;
+  heatmap_url?: string;
   baseline_url?: string;
   predicted_class: string;
   status: 'healthy' | 'warning' | 'critical';
@@ -17,7 +18,14 @@ export interface WoundAssessment {
     erythema_radius: string;
     granulation_score: number;
     staple_integrity: string;
-    exudate_level: 'None' | 'Serous Minimal' | 'Moderate' | 'Purulent High';
+    exudate_level: string;
+    granulation_pct?: number;
+    slough_pct?: number;
+    necrosis_pct?: number;
+    granulation_percent?: number;
+    slough_percent?: number;
+    necrosis_percent?: number;
+    erythema_index?: number;
   };
 }
 
@@ -29,7 +37,7 @@ export interface VitalRecord {
   unit: string;
   status: 'nominal' | 'warning' | 'critical';
   timestamp: string;
-  history: number[];
+  history?: number[];
   normative: string;
 }
 
@@ -321,7 +329,7 @@ export const RecoveryStore = {
               unit: vital.unit,
               status: vital.status,
               timestamp: 'Just now',
-              history: [...v.history.slice(1), numericVal],
+              history: [...(v.history || []).slice(1), numericVal],
             }
           : v
       );

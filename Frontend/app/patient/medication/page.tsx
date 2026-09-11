@@ -6,12 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Pill, Plus, Check, Clock, Trash2, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Pill, Plus, Check, Clock, Trash2, ShieldCheck, CheckCircle2, Loader2 } from 'lucide-react';
 import { RecoveryStore, MedicationRecord } from '@/lib/recovery-store';
+import { api } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 export default function MedicationPage() {
   const [medications, setMedications] = useState<MedicationRecord[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [newMed, setNewMed] = useState({
     name: '',
     dosage: '',
@@ -20,8 +23,34 @@ export default function MedicationPage() {
     instructions: '',
   });
 
-  const loadData = () => {
-    setMedications(RecoveryStore.getMedications());
+  const { toast } = useToast();
+
+  const loadData = async () => {
+    // 1. Instant local load
+    const local = RecoveryStore.getMedications();
+    setMedications(local);
+
+    // 2. Fetch ground truth from backend SQLite EHR
+    try {
+      const remote = await api.getMedications('pat-default');
+      if (remote && remote.length > 0) {
+        const mapped: MedicationRecord[] = remote.map((r) => ({
+          id: String(r.id),
+          name: r.name,
+          dosage: r.dosage,
+          frequency: r.frequency || 'Once daily',
+          category: r.is_antibiotic ? 'Antibiotic' : 'Analgesic',
+          scheduleSlot: 'Morning',
+          completedToday: r.taken_today ?? r.is_taken ?? false,
+          currentDay: 4,
+          totalDays: 7,
+          instructions: r.is_antibiotic ? 'Complete entire prescribed course.' : 'Take as directed with water.',
+        }));
+        setMedications(mapped);
+      }
+    } catch (err) {
+      console.warn('Backend medications sync skipped:', err);
+    }
   };
 
   useEffect(() => {
@@ -30,36 +59,67 @@ export default function MedicationPage() {
     return () => window.removeEventListener('healios-store-update', loadData);
   }, []);
 
-  const handleToggleDose = (id: string) => {
+  const handleToggleDose = async (id: string) => {
+    // Optimistic toggle
     RecoveryStore.toggleMedication(id);
+    const numId = parseInt(id, 10);
+    if (!isNaN(numId)) {
+      try {
+        await api.toggleMedication(numId);
+      } catch (err) {
+        console.warn('Could not sync dose toggle to backend:', err);
+      }
+    }
   };
 
   const handleDelete = (id: string) => {
     RecoveryStore.deleteMedication(id);
   };
 
-  const handleAddMedication = (e: React.FormEvent) => {
+  const handleAddMedication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMed.name || !newMed.dosage) return;
 
-    RecoveryStore.addMedication({
-      name: newMed.name,
-      dosage: newMed.dosage,
-      frequency: newMed.frequency,
-      category: 'Analgesic',
-      scheduleSlot: newMed.scheduleSlot,
-      totalDays: 7,
-      instructions: newMed.instructions || 'Take with a glass of water.',
-    });
+    setIsAdding(true);
+    try {
+      // 1. Local update
+      RecoveryStore.addMedication({
+        name: newMed.name,
+        dosage: newMed.dosage,
+        frequency: newMed.frequency,
+        category: 'Analgesic',
+        scheduleSlot: newMed.scheduleSlot,
+        totalDays: 7,
+        instructions: newMed.instructions || 'Take with a glass of water.',
+      });
 
-    setNewMed({
-      name: '',
-      dosage: '',
-      frequency: 'Once daily',
-      scheduleSlot: 'Morning',
-      instructions: '',
-    });
-    setShowAddForm(false);
+      // 2. Remote backend persist
+      try {
+        await api.addMedication('pat-default', {
+          name: newMed.name,
+          dosage: newMed.dosage,
+          frequency: newMed.frequency,
+          is_antibiotic: false,
+        });
+      } catch (err) {
+        console.warn('Could not persist new medication to backend:', err);
+      }
+
+      setNewMed({
+        name: '',
+        dosage: '',
+        frequency: 'Once daily',
+        scheduleSlot: 'Morning',
+        instructions: '',
+      });
+      setShowAddForm(false);
+      toast({
+        title: 'Prescription Added',
+        description: `${newMed.name} ${newMed.dosage} added to your active recovery medication list.`,
+      });
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   const completedToday = medications.filter((m) => m.completedToday).length;

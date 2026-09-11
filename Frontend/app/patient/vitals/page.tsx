@@ -23,7 +23,7 @@ import { RecoveryStore, VitalRecord } from '@/lib/recovery-store';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, SymptomLog } from '@/lib/api';
 
-const DEMO_USER_ID = 'demo_user_001';
+const DEMO_USER_ID = 'pat-default';
 
 export default function VitalsAndSymptomsPage() {
   const [activeSubTab, setActiveSubTab] = useState<'vitals' | 'symptoms'>('vitals');
@@ -36,8 +36,59 @@ export default function VitalsAndSymptomsPage() {
   const [symptomText, setSymptomText] = useState('');
   const [painScale, setPainScale] = useState(2);
 
-  const loadData = () => {
+  const loadData = async () => {
+    // 1. Instant local store load
     setVitals(RecoveryStore.getVitals());
+
+    // 2. Query remote EHR vitals
+    try {
+      const remoteVitals = await api.getVitals(DEMO_USER_ID);
+      if (remoteVitals && remoteVitals.length > 0) {
+        const latest = remoteVitals[0];
+        const formatted: VitalRecord[] = [];
+        if (latest.temperature) {
+          formatted.push({
+            id: `vit-temp-${latest.id}`,
+            type: 'temperature',
+            label: 'Core Body Temp',
+            value: `${latest.temperature.toFixed(1)}`,
+            unit: '°F',
+            status: latest.temperature > 100.4 ? 'warning' : 'nominal',
+            normative: '97.8 - 99.1°F',
+            timestamp: new Date(latest.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+        if (latest.heart_rate) {
+          formatted.push({
+            id: `vit-hr-${latest.id}`,
+            type: 'heart-rate',
+            label: 'Resting Heart Rate',
+            value: `${latest.heart_rate}`,
+            unit: 'bpm',
+            status: latest.heart_rate > 105 ? 'warning' : 'nominal',
+            normative: '60 - 100 bpm',
+            timestamp: new Date(latest.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+        if (latest.oxygen_sat) {
+          formatted.push({
+            id: `vit-ox-${latest.id}`,
+            type: 'oxygen',
+            label: 'Oxygen SpO2',
+            value: `${latest.oxygen_sat}`,
+            unit: '%',
+            status: latest.oxygen_sat < 94 ? 'warning' : 'nominal',
+            normative: '95 - 100%',
+            timestamp: new Date(latest.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+        if (formatted.length > 0) {
+          setVitals(formatted);
+        }
+      }
+    } catch (err) {
+      console.warn('Backend vitals sync skipped:', err);
+    }
   };
 
   useEffect(() => {
@@ -73,7 +124,7 @@ export default function VitalsAndSymptomsPage() {
     },
   });
 
-  const handleRecordVital = (e: React.FormEvent) => {
+  const handleRecordVital = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVitalVal) return;
 
@@ -98,6 +149,7 @@ export default function VitalsAndSymptomsPage() {
       'blood-pressure': 'mmHg',
     };
 
+    // 1. Local state update
     RecoveryStore.addVital({
       type: vitalType,
       label: labels[vitalType],
@@ -106,6 +158,25 @@ export default function VitalsAndSymptomsPage() {
       status,
       normative: 'Normal Range',
     });
+
+    // 2. Remote EHR persistence
+    try {
+      const payload: Parameters<typeof api.recordVitals>[1] = {};
+      if (vitalType === 'temperature' && !isNaN(num)) payload.temperature = num;
+      if (vitalType === 'heart-rate' && !isNaN(num)) payload.heart_rate = Math.round(num);
+      if (vitalType === 'oxygen' && !isNaN(num)) payload.oxygen_sat = num;
+      if (vitalType === 'blood-pressure') {
+        const parts = newVitalVal.split('/');
+        if (parts.length === 2) {
+          payload.blood_pressure_sys = parseFloat(parts[0]);
+          payload.blood_pressure_dia = parseFloat(parts[1]);
+        }
+      }
+
+      await api.recordVitals(DEMO_USER_ID, payload);
+    } catch (err) {
+      console.warn('Could not persist vital to backend:', err);
+    }
 
     setNewVitalVal('');
   };
@@ -116,7 +187,7 @@ export default function VitalsAndSymptomsPage() {
 
     addLogMutation.mutate({
       text: `Pain Level: ${painScale}/10. ${symptomText.trim()}`,
-      urgency: painScale >= 8 ? 10.0 : painScale >= 5 ? 5.0 : 1.0,
+      urgency: painScale >= 8 ? 8.0 : painScale >= 5 ? 5.0 : 1.0,
     });
   };
 

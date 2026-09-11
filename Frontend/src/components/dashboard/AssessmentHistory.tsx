@@ -169,6 +169,7 @@ export const AssessmentHistory = ({ refreshTrigger }: AssessmentHistoryProps) =>
               <DualLensWoundViewer
                 currentUrl={selectedAssessment.image_url}
                 baselineUrl={selectedAssessment.baseline_url}
+                heatmapUrl={selectedAssessment.heatmap_url}
                 predictedClass={selectedAssessment.predicted_class}
                 tissueMetrics={selectedAssessment.tissue_metrics}
               />

@@ -4,9 +4,14 @@ export interface User {
   id: number;
   external_id: string;
   display_name: string;
+  name?: string;
+  age?: number;
+  gender?: string;
+  mrn?: string;
   surgery_date?: string;
   procedure_name?: string;
   surgeon_name?: string;
+  facility?: string;
   discharge_date?: string;
   clinic_phone?: string;
 }
@@ -22,12 +27,20 @@ export interface TissueMetrics {
   granulation_score: number;
   staple_integrity: string;
   exudate_level: string;
+  granulation_pct?: number;
+  slough_pct?: number;
+  necrosis_pct?: number;
+  granulation_percent?: number;
+  slough_percent?: number;
+  necrosis_percent?: number;
+  erythema_index?: number;
 }
 
 export interface WoundAssessmentRecord {
   id: number;
   user_id: number;
   image_path: string;
+  heatmap_path?: string;
   predicted_class: string;
   confidence: number;
   risk_score: number;
@@ -43,14 +56,16 @@ export interface WoundAssessmentRecord {
 export interface VitalSignRecord {
   id: number;
   user_id: number;
-  heart_rate: number;
-  blood_pressure_sys: number;
-  blood_pressure_dia: number;
-  temperature: number;
-  oxygen_saturation: number;
-  pain_score: number;
+  heart_rate?: number;
+  blood_pressure_sys?: number;
+  blood_pressure_dia?: number;
+  temperature?: number;
+  oxygen_saturation?: number;
+  oxygen_sat?: number;
+  pain_score?: number;
   notes?: string;
-  created_at: string;
+  created_at?: string;
+  timestamp?: string;
 }
 
 export interface MedicationRecord {
@@ -64,6 +79,7 @@ export interface MedicationRecord {
   next_dose_time: string;
   is_antibiotic: boolean;
   is_taken: boolean;
+  taken_today?: boolean;
   last_taken_at?: string;
 }
 
@@ -77,16 +93,22 @@ export interface SymptomLog {
 }
 
 export interface RecoverySummary {
-  user: User;
+  user?: User;
+  patient?: User;
   days_post_op: number;
   latest_assessment: WoundAssessmentRecord | null;
   latest_vitals: VitalSignRecord | null;
-  recent_vitals: VitalSignRecord[];
-  medications: MedicationRecord[];
-  adherence_rate: number;
-  composite_risk_score: number;
-  escalation_needed: boolean;
+  recent_vitals?: VitalSignRecord[];
+  medications?: MedicationRecord[];
+  active_medications_count?: number;
+  adherence_rate?: number;
+  composite_risk_score?: number;
+  risk_score?: number;
+  risk_level?: string;
+  escalation_needed?: boolean;
 }
+
+export type RecoverySummaryResponse = RecoverySummary;
 
 export interface PredictionResult {
   filename: string;
@@ -102,7 +124,24 @@ export interface PredictionResult {
   tissue_metrics: TissueMetrics;
   escalation_required: boolean;
   image_url?: string;
+  heatmap_url?: string;
   saved_assessment_id?: number;
+}
+
+export interface CitationItem {
+  protocol_id: string;
+  title: string;
+  section: string;
+  guideline: string;
+}
+
+export interface AgentConsultResponse {
+  response: string;
+  urgency: 'nominal' | 'warning' | 'critical';
+  escalate_to_surgeon: boolean;
+  citations: CitationItem[];
+  tools_executed: string[];
+  timestamp: string;
 }
 
 export const api = {
@@ -171,29 +210,56 @@ export const api = {
   },
 
   // Vitals Telemetry
-  recordVitals: async (params: {
-    userExternalId: string;
-    heartRate: number;
-    bloodPressureSys: number;
-    bloodPressureDia: number;
-    temperature: number;
-    oxygenSaturation: number;
-    painScore: number;
-    notes?: string;
-  }): Promise<VitalSignRecord> => {
+  recordVitals: async (
+    paramsOrUserId:
+      | string
+      | {
+          userExternalId?: string;
+          heartRate?: number;
+          bloodPressureSys?: number;
+          bloodPressureDia?: number;
+          temperature?: number;
+          oxygenSaturation?: number;
+          painScore?: number;
+          notes?: string;
+        },
+    maybePayload?: {
+      heart_rate?: number;
+      blood_pressure_sys?: number;
+      blood_pressure_dia?: number;
+      temperature?: number;
+      oxygen_sat?: number;
+      pain_score?: number;
+    }
+  ): Promise<VitalSignRecord> => {
+    let bodyData: any;
+    if (typeof paramsOrUserId === 'string') {
+      bodyData = {
+        user_external_id: paramsOrUserId,
+        heart_rate: maybePayload?.heart_rate ?? 72,
+        blood_pressure_sys: maybePayload?.blood_pressure_sys ?? 120,
+        blood_pressure_dia: maybePayload?.blood_pressure_dia ?? 80,
+        temperature: maybePayload?.temperature ?? 98.6,
+        oxygen_saturation: maybePayload?.oxygen_sat ?? 98,
+        pain_score: maybePayload?.pain_score ?? 2,
+      };
+    } else {
+      bodyData = {
+        user_external_id: paramsOrUserId.userExternalId || 'pat-default',
+        heart_rate: paramsOrUserId.heartRate ?? 72,
+        blood_pressure_sys: paramsOrUserId.bloodPressureSys ?? 120,
+        blood_pressure_dia: paramsOrUserId.bloodPressureDia ?? 80,
+        temperature: paramsOrUserId.temperature ?? 98.6,
+        oxygen_saturation: paramsOrUserId.oxygenSaturation ?? 98,
+        pain_score: paramsOrUserId.painScore ?? 2,
+        notes: paramsOrUserId.notes,
+      };
+    }
+
     const res = await fetch(`${API_URL}/vitals`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_external_id: params.userExternalId,
-        heart_rate: params.heartRate,
-        blood_pressure_sys: params.bloodPressureSys,
-        blood_pressure_dia: params.bloodPressureDia,
-        temperature: params.temperature,
-        oxygen_saturation: params.oxygenSaturation,
-        pain_score: params.painScore,
-        notes: params.notes,
-      }),
+      body: JSON.stringify(bodyData),
     });
     if (!res.ok) throw new Error('Failed to record vitals');
     return res.json();
@@ -220,6 +286,60 @@ export const api = {
     return res.json();
   },
 
+  addMedication: async (
+    paramsOrUserId:
+      | string
+      | {
+          userExternalId: string;
+          name: string;
+          dosage: string;
+          frequency: string;
+          course_day?: number;
+          total_days?: number;
+          next_dose_time?: string;
+          is_antibiotic?: boolean;
+        },
+    maybeMed?: {
+      name: string;
+      dosage: string;
+      frequency?: string;
+      is_antibiotic?: boolean;
+    }
+  ): Promise<MedicationRecord> => {
+    let bodyData: any;
+    if (typeof paramsOrUserId === 'string' && maybeMed) {
+      bodyData = {
+        user_external_id: paramsOrUserId,
+        name: maybeMed.name,
+        dosage: maybeMed.dosage,
+        frequency: maybeMed.frequency || 'Once daily',
+        course_day: 1,
+        total_days: 7,
+        next_dose_time: '08:00 AM',
+        is_antibiotic: maybeMed.is_antibiotic || false,
+      };
+    } else {
+      const p = paramsOrUserId as any;
+      bodyData = {
+        user_external_id: p.userExternalId,
+        name: p.name,
+        dosage: p.dosage,
+        frequency: p.frequency,
+        course_day: p.course_day || 1,
+        total_days: p.total_days || 7,
+        next_dose_time: p.next_dose_time || '08:00 AM',
+        is_antibiotic: p.is_antibiotic || false,
+      };
+    }
+    const res = await fetch(`${API_URL}/medications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyData),
+    });
+    if (!res.ok) throw new Error('Failed to add medication');
+    return res.json();
+  },
+
   // Symptom Logs
   createLog: async (userExternalId: string, text: string, urgency: number = 0.0): Promise<SymptomLog> => {
     const res = await fetch(`${API_URL}/symptom-logs`, {
@@ -237,7 +357,33 @@ export const api = {
 
   getLogs: async (userExternalId: string = 'pat-default'): Promise<SymptomLog[]> => {
     const res = await fetch(`${API_URL}/symptom-logs?external_id=${encodeURIComponent(userExternalId)}`);
-    if (!res.ok) throw new Error('Failed to fetch logs');
+    if (!res.ok) throw new Error('Failed to fetch symptom logs');
+    return res.json();
+  },
+
+
+  updateUser: async (externalId: string, updates: Partial<User>): Promise<User> => {
+    const res = await fetch(`${API_URL}/users/${externalId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error('Failed to update user profile');
+    return res.json();
+  },
+
+  // Clinical Recovery Agent
+  consultAgent: async (query: string, userExternalId: string = 'pat-default'): Promise<AgentConsultResponse> => {
+    const res = await fetch(`${API_URL}/agent/consult`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_external_id: userExternalId,
+        query,
+        include_biometrics: true,
+      }),
+    });
+    if (!res.ok) throw new Error('Clinical agent inquiry failed');
     return res.json();
   },
 };

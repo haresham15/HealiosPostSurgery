@@ -1,12 +1,16 @@
 import os
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 default_db_path = os.path.join(BASE_DIR, "healios.db")
 DB_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_db_path}")
 engine = create_engine(DB_URL, connect_args={"check_same_thread": False})
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class User(SQLModel, table=True):
@@ -20,12 +24,18 @@ class User(SQLModel, table=True):
     date_of_birth: Optional[str] = "1992-04-14"
     gender: Optional[str] = "Female"
     mrn: Optional[str] = "MRN-84920"
+    procedure_name: Optional[str] = "Laparoscopic Appendectomy"
+    surgery_date: Optional[str] = "2026-09-07"
+    surgeon_name: Optional[str] = "Dr. Sarah Lin, MD"
+    facility: Optional[str] = "St. Jude Surgical Pavilion"
+    discharge_date: Optional[str] = "2026-09-08"
+    clinic_phone: Optional[str] = "(555) 234-8901"
     emergency_name: Optional[str] = "Dmitri Rostov"
     emergency_phone: Optional[str] = "(555) 019-2834"
     emergency_relation: Optional[str] = "Spouse"
     allergies: Optional[str] = "NKDA (No Known Drug Allergies)"
     avatar_url: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Surgery(SQLModel, table=True):
@@ -46,7 +56,7 @@ class Surgery(SQLModel, table=True):
     is_active_recovery: bool = True  # True if this is currently monitored
     status: str = "recovering"  # recovering, healed, scheduled
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class Observation(SQLModel, table=True):
@@ -57,6 +67,7 @@ class Observation(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", index=True)
     surgery_id: Optional[int] = Field(default=None, foreign_key="surgery.id", index=True)
     image_path: str
+    heatmap_path: Optional[str] = None
     predicted_class: str
     confidence: float
     risk_score: int
@@ -66,7 +77,7 @@ class Observation(SQLModel, table=True):
     recommendations: Optional[str] = None
     tissue_metrics_json: Optional[str] = None
     doctor_alert: bool = False
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
 
 
 class VitalSign(SQLModel, table=True):
@@ -83,7 +94,7 @@ class VitalSign(SQLModel, table=True):
     oxygen_saturation: int
     pain_score: int
     notes: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
 
 
 class Medication(SQLModel, table=True):
@@ -102,7 +113,7 @@ class Medication(SQLModel, table=True):
     is_antibiotic: bool = False
     is_taken: bool = False
     last_taken_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class SymptomLog(SQLModel, table=True):
@@ -115,7 +126,7 @@ class SymptomLog(SQLModel, table=True):
     free_text: str
     urgency: float = 0.0
     category: Optional[str] = "General"
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
 
 
 class RiskScore(SQLModel, table=True):
@@ -127,7 +138,7 @@ class RiskScore(SQLModel, table=True):
     surgery_id: Optional[int] = Field(default=None, foreign_key="surgery.id", index=True)
     score_0_100: int
     reason: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 def init_db():
@@ -154,6 +165,8 @@ def get_or_create_user(
     user = User(
         external_id=external_id,
         display_name=display_name,
+        procedure_name=procedure_name,
+        surgeon_name=surgeon_name,
         email=email or f"{external_id}@patient.healios.health",
     )
     session.add(user)

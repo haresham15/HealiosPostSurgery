@@ -2,7 +2,7 @@ import os
 import json
 from contextlib import asynccontextmanager
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, UploadFile, File, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,8 +29,11 @@ from .schemas import (
     SymptomLogRead,
     AssessmentRead,
     RecoverySummaryRead,
+    AgentConsultRequest,
+    AgentConsultResponse,
 )
 from .model import load_model, run_inference
+from .rag import clinical_agent
 from .db import (
     init_db,
     get_session,
@@ -103,9 +106,9 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # CORS Middleware
 allowed_origins_env = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,*"
+    "http://localhost:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3002,https://healios-frontend.onrender.com"
 )
-allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip() and origin.strip() != "*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -133,7 +136,7 @@ def health():
     return PingResponse(
         status="ok",
         model_loaded=GLOBAL_MODEL is not None,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
@@ -168,10 +171,18 @@ def update_user_profile(external_id: str, update_data: UserUpdate, session: Sess
         user.display_name = update_data.display_name
     if update_data.procedure_name is not None:
         user.procedure_name = update_data.procedure_name
+    if update_data.surgery_date is not None:
+        user.surgery_date = update_data.surgery_date
     if update_data.surgeon_name is not None:
         user.surgeon_name = update_data.surgeon_name
     if update_data.clinic_phone is not None:
         user.clinic_phone = update_data.clinic_phone
+    if update_data.discharge_date is not None:
+        user.discharge_date = update_data.discharge_date
+    if update_data.emergency_name is not None:
+        user.emergency_name = update_data.emergency_name
+    if update_data.emergency_phone is not None:
+        user.emergency_phone = update_data.emergency_phone
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -197,19 +208,18 @@ async def predict_wound(
         model_path = os.path.join(BASE_DIR, "wound_model_multiclass_finetuned.h5")
         if os.path.exists(model_path):
             GLOBAL_MODEL = await run_in_threadpool(load_model, model_path)
-        if GLOBAL_MODEL is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Model is currently unavailable")
 
     image_bytes = await file.read()
     if not image_bytes or len(image_bytes) == 0:
         raise HTTPException(status_code=400, detail="Empty image payload")
 
     try:
-        # 1. Non-blocking threadpool execution for CPU-intensive inference
-        eval_result = await run_in_threadpool(run_inference, GLOBAL_MODEL, image_bytes)
+        # 1. Non-blocking threadpool execution for CPU-intensive inference + Grad-CAM
+        eval_result = await run_in_threadpool(run_inference, GLOBAL_MODEL, image_bytes, UPLOAD_DIR)
 
         # 2. Persist image file safely to uploads directory
         local_path, public_url = save_image_bytes(image_bytes, UPLOAD_DIR, file.filename or "scan.jpg")
+        heatmap_url = eval_result.get("heatmap_url")
 
         saved_id = None
         # 3. Associate with patient database record if requested
@@ -221,6 +231,7 @@ async def predict_wound(
             obs = Observation(
                 user_id=user.id,
                 image_path=public_url,
+                heatmap_path=heatmap_url,
                 predicted_class=eval_result["predicted_class"],
                 confidence=eval_result["confidence"],
                 risk_score=eval_result["risk_score"],
@@ -254,6 +265,7 @@ async def predict_wound(
             tissue_metrics=metrics,
             escalation_required=eval_result["escalation_required"],
             image_url=public_url,
+            heatmap_url=heatmap_url,
             saved_assessment_id=saved_id,
         )
 
@@ -299,6 +311,7 @@ def get_patient_assessments(
                 id=obs.id,
                 user_id=obs.user_id,
                 image_path=obs.image_path,
+                heatmap_path=obs.heatmap_path,
                 predicted_class=obs.predicted_class,
                 confidence=obs.confidence,
                 risk_score=obs.risk_score,
@@ -349,6 +362,7 @@ def get_latest_assessment(
         id=obs.id,
         user_id=obs.user_id,
         image_path=obs.image_path,
+        heatmap_path=obs.heatmap_path,
         predicted_class=obs.predicted_class,
         confidence=obs.confidence,
         risk_score=obs.risk_score,
@@ -571,6 +585,7 @@ def get_recovery_summary(external_id: str, session: Session = Depends(get_sessio
             id=latest_obs.id,
             user_id=latest_obs.user_id,
             image_path=latest_obs.image_path,
+            heatmap_path=latest_obs.heatmap_path,
             predicted_class=latest_obs.predicted_class,
             confidence=latest_obs.confidence,
             risk_score=latest_obs.risk_score,
@@ -612,7 +627,7 @@ def get_recovery_summary(external_id: str, session: Session = Depends(get_sessio
     if user.surgery_date:
         try:
             s_date = datetime.strptime(user.surgery_date, "%Y-%m-%d").date()
-            days_post_op = max(1, (datetime.utcnow().date() - s_date).days)
+            days_post_op = max(1, (datetime.now(timezone.utc).date() - s_date).days)
         except Exception:
             days_post_op = 4
 
@@ -639,3 +654,27 @@ def get_recovery_summary(external_id: str, session: Session = Depends(get_sessio
         composite_risk_score=composite_risk,
         escalation_needed=escalation,
     )
+
+
+# --- Clinical Recovery Agent Endpoints ---
+@app.post("/agent/consult", response_model=AgentConsultResponse)
+def consult_recovery_agent(
+    req: AgentConsultRequest,
+    session: Session = Depends(get_session),
+):
+    """
+    Multimodal clinical recovery agent. Executes diagnostic EHR tools across
+    recent patient vitals, wound scans, and medication adherence, returning
+    evidence-grounded recommendations cited from verified ERAS protocols.
+    """
+    user = session.exec(select(User).where(User.external_id == req.user_external_id)).first()
+    if not user:
+        user = get_or_create_user(session, external_id=req.user_external_id)
+
+    return clinical_agent.consult(
+        session=session,
+        user=user,
+        query=req.query,
+        include_biometrics=req.include_biometrics,
+    )
+

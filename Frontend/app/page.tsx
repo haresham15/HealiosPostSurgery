@@ -117,7 +117,7 @@ export default function HomePage() {
             <ShieldCheck className="h-4 w-4 text-primary" />
             <span className="font-semibold text-foreground">Healios Post-Op Recovery</span>
           </div>
-          <span>Safe, private, and HIPAA-compliant patient monitoring</span>
+          <span>Clinical Demonstration &amp; Post-Surgical Recovery Research Prototype</span>
         </div>
       </footer>
     </div>

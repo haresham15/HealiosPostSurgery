@@ -295,7 +295,7 @@ export default function SymptomLogPage() {
                 </p>
               ) : (
                 <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
-                  {displayLogs.map((log) => {
+                  {displayLogs.map((log: any) => {
                     const date = new Date(log.created_at);
                     const formatted = isNaN(date.getTime())
                       ? 'Recent'

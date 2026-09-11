@@ -1,12 +1,16 @@
 from pydantic import BaseModel, Field, ConfigDict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class PingResponse(BaseModel):
     status: str = Field(default="ok")
     model_loaded: bool = True
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     service: str = "Healios Surgical Recovery AI Engine"
     version: str = "2.0.0"
 
@@ -28,6 +32,13 @@ class TissueMetrics(BaseModel):
     granulation_score: int = 95
     staple_integrity: str = "All staples / sutures intact and well-aligned"
     exudate_level: str = "Serosanguinous (trace)"
+    granulation_pct: Optional[float] = 88.5
+    slough_pct: Optional[float] = 8.2
+    necrosis_pct: Optional[float] = 0.0
+    granulation_percent: Optional[float] = 88.5
+    slough_percent: Optional[float] = 8.2
+    necrosis_percent: Optional[float] = 0.0
+    erythema_index: Optional[float] = 1.2
 
 
 class PredictResponse(BaseModel):
@@ -44,6 +55,7 @@ class PredictResponse(BaseModel):
     tissue_metrics: TissueMetrics
     escalation_required: bool
     image_url: Optional[str] = None
+    heatmap_url: Optional[str] = None
     saved_assessment_id: Optional[int] = None
 
 
@@ -65,8 +77,12 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     display_name: Optional[str] = None
     procedure_name: Optional[str] = None
+    surgery_date: Optional[str] = None
     surgeon_name: Optional[str] = None
     clinic_phone: Optional[str] = None
+    discharge_date: Optional[str] = None
+    emergency_name: Optional[str] = None
+    emergency_phone: Optional[str] = None
 
 
 class UserRead(UserBase):
@@ -171,6 +187,7 @@ class AssessmentRead(BaseModel):
     id: int
     user_id: int
     image_path: str
+    heatmap_path: Optional[str] = None
     predicted_class: str
     confidence: float
     risk_score: int
@@ -196,3 +213,27 @@ class RecoverySummaryRead(BaseModel):
     composite_risk_score: int = 12
     escalation_needed: bool = False
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Clinical RAG & Recovery Agent Schemas ---
+class CitationItem(BaseModel):
+    protocol_id: str
+    title: str
+    section: str
+    guideline: str
+
+
+class AgentConsultRequest(BaseModel):
+    user_external_id: str = "pat-default"
+    query: str
+    include_biometrics: bool = True
+
+
+class AgentConsultResponse(BaseModel):
+    response: str
+    urgency: str  # nominal, warning, critical
+    escalate_to_surgeon: bool
+    citations: List[CitationItem] = []
+    tools_executed: List[str] = []
+    timestamp: datetime = Field(default_factory=utc_now)
+
