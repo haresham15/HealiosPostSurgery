@@ -1,183 +1,196 @@
-import { useEffect, useState } from "react";
-import Image from "next/image";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, AlertCircle, CheckCircle, AlertTriangle, History } from "lucide-react";
-import { format } from "date-fns";
-import { Progress } from "@/components/ui/progress";
+'use client';
 
-interface Assessment {
-  id: string;
-  image_url: string;
-  risk_score: number | null;
-  status: string;
-  ai_analysis: string | null;
-  recommendations: string | null;
-  created_at: string | null;
-}
+import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { History, CheckCircle2, AlertTriangle, AlertCircle, Calendar, Eye, Activity } from 'lucide-react';
+import { RecoveryStore, WoundAssessment } from '@/lib/recovery-store';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { DualLensWoundViewer } from '@/components/clinical/DualLensWoundViewer';
+import { ProbabilityMatrix } from '@/components/clinical/ProbabilityMatrix';
 
 interface AssessmentHistoryProps {
   refreshTrigger: number;
 }
 
 export const AssessmentHistory = ({ refreshTrigger }: AssessmentHistoryProps) => {
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [assessments, setAssessments] = useState<WoundAssessment[]>([]);
+  const [selectedAssessment, setSelectedAssessment] = useState<WoundAssessment | null>(null);
+
+  const loadAssessments = () => {
+    const list = RecoveryStore.getAssessments();
+    setAssessments(list);
+  };
 
   useEffect(() => {
     loadAssessments();
+    window.addEventListener('healios-store-update', loadAssessments);
+    return () => window.removeEventListener('healios-store-update', loadAssessments);
   }, [refreshTrigger]);
 
-  const loadAssessments = async () => {
-    try {
-      setLoading(true);
-      const storedAssessments = localStorage.getItem('wound_assessments');
-      const data = storedAssessments ? JSON.parse(storedAssessments) : [];
-      
-      data.sort((a: Assessment, b: Assessment) => {
-        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return tb - ta;
-      });
-      
-      setAssessments(data);
-    } catch (error) {
-      console.error("Error loading assessments:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case "healthy":
-        return <CheckCircle className="h-4 w-4 text-green-500 drop-shadow-sm" />;
-      case "warning":
-        return <AlertTriangle className="h-4 w-4 text-yellow-500 drop-shadow-sm" />;
-      case "critical":
-        return <AlertCircle className="h-4 w-4 text-red-500 drop-shadow-sm" />;
+      case 'healthy':
+        return (
+          <Badge variant="outline" className="border-primary/40 text-primary bg-primary/10 text-[10px] font-mono uppercase">
+            Nominal
+          </Badge>
+        );
+      case 'warning':
+        return (
+          <Badge variant="outline" className="border-amber-500/40 text-amber-400 bg-amber-950/20 text-[10px] font-mono uppercase">
+            Watch
+          </Badge>
+        );
+      case 'critical':
       default:
-        return null;
+        return (
+          <Badge variant="outline" className="border-red-500/40 text-red-400 bg-red-950/20 text-[10px] font-mono uppercase">
+            Alert
+          </Badge>
+        );
     }
   };
-
-  const getStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-    switch (status) {
-      case "healthy":
-        return "secondary";
-      case "warning":
-        return "default";
-      case "critical":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
-
-  if (loading) {
-    return (
-      <Card className="border-0 bg-white/40 backdrop-blur-xl shadow-lg dark:bg-gray-950/40 ring-1 ring-black/5 dark:ring-white/10 h-full flex flex-col justify-center items-center py-24">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-muted-foreground mt-4 animate-pulse">Loading assessments...</p>
-      </Card>
-    );
-  }
 
   return (
-    <Card className="border-0 bg-white/40 backdrop-blur-xl shadow-lg dark:bg-gray-950/40 ring-1 ring-black/5 dark:ring-white/10 h-full">
-      <CardHeader className="border-b border-black/5 dark:border-white/5 pb-4">
-        <CardTitle className="flex items-center gap-3 text-2xl">
-          <div className="rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 p-2.5 shadow-inner ring-1 ring-primary/20">
-            <History className="h-6 w-6 text-primary" />
+    <>
+      <Card className="border border-border/80 bg-card/75 backdrop-blur-md rounded-xl overflow-hidden shadow-sm">
+        <CardHeader className="p-4 sm:p-5 border-b border-border/70 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              <History className="h-4 w-4 text-primary" />
+              Incision Telemetry Archive
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground mt-0.5">
+              Chronological log of surgical site computer vision assessments ({assessments.length} scans)
+            </CardDescription>
           </div>
-          Assessment History
-        </CardTitle>
-        <CardDescription className="text-base mt-2">Track your recovery progress over time</CardDescription>
-      </CardHeader>
-      <CardContent className="p-0">
-        {assessments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-            <div className="bg-primary/5 p-6 rounded-full mb-4">
-              <History className="h-12 w-12 text-primary/40" />
+          <span className="font-mono text-[10px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border">
+            POD 0 → TODAY
+          </span>
+        </CardHeader>
+
+        <CardContent className="p-4 sm:p-5">
+          {assessments.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <History className="h-10 w-10 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-foreground">No telemetry scans recorded</p>
+              <p className="text-xs mt-1">Upload a wound image to start your recovery history.</p>
             </div>
-            <h3 className="text-xl font-semibold mb-2">No Assessments Yet</h3>
-            <p className="text-muted-foreground max-w-sm">
-              Upload your first wound photo using the AI scanner to begin tracking your recovery journey.
-            </p>
-          </div>
-        ) : (
-          <ScrollArea className="h-[600px]">
-            <div className="space-y-4 p-6">
-              {assessments.map((assessment) => {
-                const isCritical = assessment.status === 'critical';
-                const isWarning = assessment.status === 'warning';
-                const isHealthy = assessment.status === 'healthy';
-                const riskScore = assessment.risk_score || 0;
-                
+          ) : (
+            <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
+              {assessments.map((item, idx) => {
+                const dateObj = new Date(item.created_at);
+                const formattedDate = isNaN(dateObj.getTime())
+                  ? 'Recent'
+                  : dateObj.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                const formattedTime = isNaN(dateObj.getTime())
+                  ? ''
+                  : dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
                 return (
-                  <Card 
-                    key={assessment.id} 
-                    className={`border-0 overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl bg-white/60 dark:bg-black/40 ring-1 
-                      ${isCritical ? 'ring-red-500/50 shadow-red-500/10' : ''}
-                      ${isWarning ? 'ring-yellow-500/50 shadow-yellow-500/10' : ''}
-                      ${isHealthy ? 'ring-green-500/50 shadow-green-500/10' : ''}
-                      ${!isCritical && !isWarning && !isHealthy ? 'ring-black/5 dark:ring-white/10' : ''}
-                    `}
+                  <div
+                    key={item.id || idx}
+                    className="p-3.5 rounded-xl border border-border/60 bg-muted/15 hover:bg-muted/30 transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5"
                   >
-                    <CardContent className="p-0">
-                      <div className="flex flex-col sm:flex-row">
-                        {/* Image Section */}
-                        <div className="relative w-full sm:w-32 h-32 sm:h-auto flex-shrink-0 bg-black/5">
-                          <Image
-                            src={assessment.image_url}
-                            alt="Wound assessment"
-                            fill
-                            className="object-cover"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent sm:hidden" />
-                          <span className="absolute bottom-2 left-2 text-white text-xs font-medium sm:hidden">
-                            {assessment.created_at ? format(new Date(assessment.created_at), "MMM d, yyyy") : "Unknown"}
+                    {/* Left: Thumbnail & Info */}
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                      <div className="relative h-16 w-16 rounded-lg overflow-hidden shrink-0 border border-border bg-black">
+                        <Image
+                          src={item.image_url}
+                          alt="Wound scan thumbnail"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {item.predicted_class}
                           </span>
+                          {getStatusBadge(item.status)}
                         </div>
-                        
-                        {/* Content Section */}
-                        <div className="flex-1 p-5 flex flex-col justify-center">
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <div className="flex items-center gap-2.5">
-                              {getStatusIcon(assessment.status)}
-                              <Badge variant={getStatusVariant(assessment.status)} className="text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider">
-                                {assessment.status}
-                              </Badge>
-                            </div>
-                            <span className="hidden sm:inline-block text-xs font-medium text-muted-foreground bg-primary/5 px-2.5 py-1 rounded-md">
-                              {assessment.created_at ? format(new Date(assessment.created_at), "MMM d, h:mm a") : "Unknown"}
-                            </span>
-                          </div>
-                          
-                          <div className="space-y-3">
-                            <div>
-                              <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Risk Score</span>
-                                <span className="text-sm font-bold">{riskScore}%</span>
-                              </div>
-                              <Progress value={riskScore} className="h-1.5 bg-primary/10" indicatorColor={riskScore > 75 ? "bg-red-500" : riskScore > 30 ? "bg-yellow-500" : "bg-green-500"} />
-                            </div>
-                            <p className="text-sm text-foreground/80 leading-relaxed line-clamp-2">
-                              <span className="font-semibold text-foreground">Analysis: </span>
-                              {assessment.ai_analysis || "No analysis available."}
-                            </p>
-                          </div>
+
+                        <p className="text-xs text-muted-foreground truncate max-w-xs sm:max-w-md">
+                          {item.ai_analysis}
+                        </p>
+
+                        <div className="flex items-center gap-2 text-[10px] font-mono text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3 text-primary" />
+                            {formattedDate} {formattedTime}
+                          </span>
+                          <span>•</span>
+                          <span>Risk: {item.risk_score}%</span>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    {/* Right: Quick Action to open Dual Lens */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedAssessment(item)}
+                      className="w-full sm:w-auto h-8 text-xs font-mono gap-1.5 border-border hover:border-primary/40 hover:text-primary shrink-0"
+                    >
+                      <Eye className="h-3.5 w-3.5" /> Inspect Lens
+                    </Button>
+                  </div>
                 );
               })}
             </div>
-          </ScrollArea>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Historical Detailed Inspection Modal */}
+      {selectedAssessment && (
+        <Dialog open={!!selectedAssessment} onOpenChange={() => setSelectedAssessment(null)}>
+          <DialogContent className="max-w-3xl bg-card border-border shadow-2xl p-6 rounded-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="border-b border-border pb-4 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs uppercase font-bold text-primary">
+                  Historical Telemetry Inspection
+                </span>
+                {getStatusBadge(selectedAssessment.status)}
+              </div>
+              <DialogTitle className="text-xl font-bold tracking-tight text-foreground">
+                Incision Morphology: {selectedAssessment.predicted_class}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Recorded on {new Date(selectedAssessment.created_at).toLocaleString()}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-3">
+              <DualLensWoundViewer
+                currentUrl={selectedAssessment.image_url}
+                baselineUrl={selectedAssessment.baseline_url}
+                predictedClass={selectedAssessment.predicted_class}
+                tissueMetrics={selectedAssessment.tissue_metrics}
+              />
+
+              <div className="p-3.5 rounded-lg border border-border bg-muted/20 text-xs space-y-1.5">
+                <span className="font-mono text-[10px] font-bold uppercase text-primary block">
+                  Diagnosis & Protocol Directives
+                </span>
+                <p className="text-foreground leading-relaxed">{selectedAssessment.ai_analysis}</p>
+                <p className="text-muted-foreground leading-relaxed">{selectedAssessment.recommendations}</p>
+              </div>
+
+              {selectedAssessment.probabilities && (
+                <ProbabilityMatrix
+                  probabilities={selectedAssessment.probabilities}
+                  predictedClass={selectedAssessment.predicted_class}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 };

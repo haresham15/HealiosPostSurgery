@@ -1,91 +1,125 @@
-'use client'
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { WoundUpload } from "@/components/dashboard/WoundUpload";
-import { AssessmentHistory } from "@/components/dashboard/AssessmentHistory";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, Shield, ArrowRight, ShieldCheck, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import {
+  ShieldCheck,
+  ArrowRight,
+  Camera,
+  CheckCircle2,
+  Heart,
+  Pill,
+  Sparkles,
+  Stethoscope,
+  Scan,
+} from 'lucide-react';
+import Image from 'next/image';
 
 export default function HomePage() {
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-
-  const handleAnalysisComplete = () => {
-    setRefreshTrigger((prev) => prev + 1);
-  };
-
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0a0a0a] relative overflow-hidden">
-      {/* Background Ambient Gradients */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-primary/20 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-blue-500/20 blur-[120px]" />
-      </div>
-
-      {/* Header */}
-      <header className="border-b border-black/5 dark:border-white/5 bg-white/60 backdrop-blur-xl dark:bg-black/60 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 max-w-7xl">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 group cursor-pointer">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-blue-600 shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform duration-300">
-                <ShieldCheck className="h-7 w-7 text-white" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-400">Healios</h1>
-                <p className="text-xs font-semibold text-primary uppercase tracking-widest">Recovery Assistant</p>
-              </div>
+    <div className="min-h-screen bg-background text-foreground telemetry-grid flex flex-col">
+      {/* Clean Top Navigation Bar */}
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-card/90 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold shadow-xs">
+              <ShieldCheck className="h-5 w-5" />
             </div>
+            <span className="text-xl font-extrabold tracking-tight text-foreground font-sans">
+              Healios
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
             <Link href="/patient/dashboard">
-              <Button className="rounded-full h-10 px-6 font-semibold shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5 group">
-                Dashboard
-                <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+              <Button className="h-10 px-5 gap-1.5 text-xs font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
+                <span>Open Patient Dashboard</span>
+                <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-12 max-w-7xl relative z-10">
-        
-        {/* Hero Section */}
-        <div className="mb-12 text-center max-w-3xl mx-auto space-y-4">
-          <Badge variant="secondary" className="px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wider mb-2 bg-primary/10 text-primary border-primary/20">
-            <Zap className="h-3 w-3 mr-1 inline" /> Powered by Advanced AI
+      {/* Main Hero & Welcome Section */}
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-12 sm:py-16 space-y-12">
+        <div className="text-center max-w-2xl mx-auto space-y-4">
+          <Badge variant="outline" className="text-xs px-3 py-1 font-semibold text-primary border-primary/30 bg-primary/10">
+            Post-Operative Recovery Companion
           </Badge>
-          <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-foreground">
-            Smart Recovery <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-500">Monitoring</span>
-          </h2>
-          <p className="text-lg text-muted-foreground leading-relaxed">
-            Upload photos of your surgical wound for instant AI-powered analysis, risk assessment, and personalized care recommendations.
+
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
+            Post-Surgery Recovery, <br />
+            <span className="text-primary">Made Simple & Reassuring.</span>
+          </h1>
+
+          <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            Check your surgical wound healing from home, stay on top of daily medications, and share peace of mind with your care team.
           </p>
+
+          <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="/patient/dashboard" className="w-full sm:w-auto">
+              <Button size="lg" className="w-full h-12 px-7 text-sm font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground gap-2 shadow-sm">
+                <span>Go to Your Recovery Dashboard</span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+
+            <Link href="/patient/wound_check" className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full h-12 px-6 text-sm font-semibold rounded-xl border-border">
+                <Camera className="h-4 w-4 mr-2 text-primary" />
+                Take Wound Photo
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Left Column: Upload (Takes up 5 columns on large screens) */}
-          <div className="lg:col-span-5 space-y-6">
-            <WoundUpload onAnalysisComplete={handleAnalysisComplete} />
-          </div>
+        {/* 3 Simple Steps */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+          <Card className="border border-border/80 bg-card/85 p-6 rounded-2xl shadow-xs space-y-2.5">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Camera className="h-5 w-5" />
+            </div>
+            <h3 className="font-bold text-sm text-foreground">1. Snap a Photo</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Take a clear picture of your incision using your phone or computer camera in normal room lighting.
+            </p>
+          </Card>
 
-          {/* Right Column: History (Takes up 7 columns on large screens) */}
-          <div className="lg:col-span-7">
-            <AssessmentHistory refreshTrigger={refreshTrigger} />
-          </div>
+          <Card className="border border-border/80 bg-card/85 p-6 rounded-2xl shadow-xs space-y-2.5">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <h3 className="font-bold text-sm text-foreground">2. Instant Healing Check</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Our AI verifies that your incision edges are closed and checks for any unusual redness or infection flags.
+            </p>
+          </Card>
 
+          <Card className="border border-border/80 bg-card/85 p-6 rounded-2xl shadow-xs space-y-2.5">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Stethoscope className="h-5 w-5" />
+            </div>
+            <h3 className="font-bold text-sm text-foreground">3. Care Team Connected</h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Your daily recovery notes, medications, and photos are organized and ready for your surgeon's review.
+            </p>
+          </Card>
         </div>
       </main>
+
+      {/* Clean Footer */}
+      <footer className="border-t border-border/70 bg-card/40 py-6 text-center text-xs text-muted-foreground">
+        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-primary" />
+            <span className="font-semibold text-foreground">Healios Post-Op Recovery</span>
+          </div>
+          <span>Safe, private, and HIPAA-compliant patient monitoring</span>
+        </div>
+      </footer>
     </div>
   );
 }
-
-// Inline badge component since it wasn't imported in original file to avoid breaking
-function Badge({ className, variant, children }: any) {
-  return (
-    <span className={`inline-flex items-center border font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${className}`}>
-      {children}
-    </span>
-  )
-}
-
